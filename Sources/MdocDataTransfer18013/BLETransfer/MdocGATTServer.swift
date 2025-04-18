@@ -316,6 +316,4 @@ public class MdocGattServer: @unchecked Sendable, ObservableObject {
 		}
 	}
 
-
 }
-

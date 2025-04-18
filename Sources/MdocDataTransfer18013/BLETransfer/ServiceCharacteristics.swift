@@ -43,6 +43,6 @@ public enum MdocServiceCharacteristic: String, Sendable {
 
 extension MdocServiceCharacteristic {
 	init?(uuid: CBUUID) {	self.init(rawValue: uuid.uuidString.uppercased()) }
-	var uuid: CBUUID { CBUUID(string: rawValue) }
+	public var uuid: CBUUID { CBUUID(string: rawValue) }
 }
 
