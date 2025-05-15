@@ -33,7 +33,7 @@ public enum TransferStatus: String, Sendable {
 }
 
 /// Possible error codes
-public enum ErrorCode: Int, CustomStringConvertible, Sendable {
+public enum ErrorCode: Int, Error {
 	case documents_not_provided
 	case invalidInputDocument
 	case invalidUrl
@@ -45,6 +45,7 @@ public enum ErrorCode: Int, CustomStringConvertible, Sendable {
 	case bleNotSupported
 	case unexpected_error
 	case sessionEncryptionNotInitialized
+	case deviceRequestFailedToDecrypt
 	case deviceEngagementMissing
 	case readerKeyMissing
 	
@@ -66,7 +67,3 @@ public enum ErrorCode: Int, CustomStringConvertible, Sendable {
 		}
 	}
 }
-
-
-
-

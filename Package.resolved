@@ -1,5 +1,5 @@
 {
-  "originHash" : "14512ee5f4e62f80bef8c481cbf865270585c2b12745aa6d3b2e2e503c78457f",
+  "originHash" : "2d004c46e99d260ff69dc12bfaf4d2e7ffa2b67a3610265980b786e57d30a0eb",
   "pins" : [
     {
       "identity" : "eudi-lib-ios-iso18013-data-model",
@@ -71,6 +71,15 @@
       "state" : {
         "revision" : "2c8c55273d4c4aae21bb46c2afbae79ee072eff4",
         "version" : "0.6.2"
+      }
+    },
+    {
+      "identity" : "swiftlintplugins",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SimplyDanny/SwiftLintPlugins",
+      "state" : {
+        "revision" : "8545ddf4de043e6f2051c5cf204f39ef778ebf6b",
+        "version" : "0.59.1"
       }
     }
   ],

@@ -45,7 +45,7 @@ public struct RequestItem: Equatable, Hashable, Sendable {
 	/// false or nil value of the property indicates the field is required
 	public let isOptional: Bool?
 
-	///implementation of Equatable and Hashable
+	/// implementation of Equatable and Hashable
 	public static func == (lhs: RequestItem, rhs: RequestItem) -> Bool {
 		return lhs.elementPath == rhs.elementPath
 	}
