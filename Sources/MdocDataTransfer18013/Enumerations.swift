@@ -45,7 +45,6 @@ public enum ErrorCode: Int, Error {
 	case bleNotSupported
 	case unexpected_error
 	case sessionEncryptionNotInitialized
-	case deviceRequestFailedToDecrypt
 	case deviceEngagementMissing
 	case readerKeyMissing
 	

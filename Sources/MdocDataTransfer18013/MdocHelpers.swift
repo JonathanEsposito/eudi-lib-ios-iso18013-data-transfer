@@ -50,7 +50,7 @@ public class MdocHelpers {
 		return NSError(domain: "\(MdocGattServer.self)", code: code.rawValue, userInfo: [NSLocalizedDescriptionKey: errorMessage, "key": code.description])
 	}
 	
-	public static func getSessionDataToSend(sessionEncryption: SessionEncryption?, docToSend: DeviceResponse) async -> Data {
+	public static func getSessionDataToSend(sessionEncryption: SessionEncryption?, docToSend: DeviceResponse) -> Data {
 		do {
 			guard var sessionEncryption else {
 				throw ErrorCode.sessionEncryptionNotInitialized
@@ -59,7 +59,7 @@ public class MdocHelpers {
 			if docToSend.documents == nil { logger.error("Could not create documents to send") }
 			let cborToSend = docToSend.toCBOR(options: CBOROptions())
 			let clearBytesToSend = cborToSend.encode()
-			let cipherData = try await sessionEncryption.encrypt(clearBytesToSend)
+			let cipherData = try sessionEncryption.encrypt(clearBytesToSend)
 			let sessionData = SessionData(cipher_data: cipherData, status: .sessionTermination)
 			
 			return Data(sessionData.encode(options: CBOROptions()))
@@ -81,9 +81,9 @@ public class MdocHelpers {
 	public static func decodeRequest(deviceEngagement: DeviceEngagement?,
 									 iaca: [SecCertificate],
 									 requestData: Data,
-									 handOver: CBOR) async throws -> (sessionEncryption: SessionEncryption,
-																	  deviceRequest: DeviceRequest,
-																	  userRequestInfo: UserRequestInfo) {
+									 handOver: CBOR) throws -> (sessionEncryption: SessionEncryption,
+																deviceRequest: DeviceRequest,
+																userRequestInfo: UserRequestInfo) {
 		guard var sessionEstablishment = try SessionEstablishment(requestData) else {
 			logger.error("Request Data cannot be decoded to session establishment")
 			throw ErrorCode.requestDecodeError
@@ -102,10 +102,7 @@ public class MdocHelpers {
 			throw ErrorCode.sessionEncryptionNotInitialized
 		}
 		
-		guard let requestData = try await sessionEncryption.decrypt(sessionEstablishment.data) else {
-			logger.error("Request data cannot be decrypted")
-			throw ErrorCode.deviceRequestFailedToDecrypt
-		}
+		let requestData = try sessionEncryption.decrypt(sessionEstablishment.data)
 		
 		guard let deviceRequest = DeviceRequest(data: requestData) else {
 			logger.error("Decrypted data cannot be decoded")
@@ -140,20 +137,15 @@ public class MdocHelpers {
 	///   - deviceRequest: Device request coming from verifier
 	///   - issuerSigned: Map of document ID to issuerSigned cbor data
 	///   - selectedItems: Selected items from user (Map of Document ID to namespaced items)
-	///   - sessionEncryption: Session Encryption data structure
 	///   - eReaderKey: eReader (verifier) ephemeral public key
 	///   - devicePrivateKeys: Device Private keys
 	///   - sessionTranscript: Session Transcript object
-	///   - deviceAuthMethod: Mdoc Authentication method
 	/// - Returns: Device response object
 	public static func getDeviceResponseToSend(userRequestInfo: UserRequestInfo,
-											   attestations: [String: (IssuerSigned, CoseKeyPrivate)],
+											   attestations: [String: (IssuerSigned, WalletPrivateKey)],
 											   selectedItems: RequestItems,
-											   sessionEncryption: SessionEncryption? = nil,
-											   eReaderKey: CoseKey? = nil,
-											   sessionTranscript: SessionTranscript? = nil,
-											   deviceAuthMethod: DeviceAuthMethod,
-											   unlockData: [String: Data]) async throws -> DeviceResponse {
+											   eReaderKey: CoseKey,
+											   sessionTranscript: SessionTranscript) throws -> DeviceResponse {
 		var documentsToAdd = [Document]()
 		
 		let issuedDocTypes = attestations.values.map(\.0.issuerAuth.mso.docType)
@@ -185,14 +177,10 @@ public class MdocHelpers {
 			if !nsItemsToAdd.isEmpty {
 				let issuerAuthToAdd = doc.issuerAuth
 				let issToAdd = IssuerSigned(issuerNameSpaces: IssuerNameSpaces(nameSpaces: nsItemsToAdd), issuerAuth: issuerAuthToAdd)
-				var devSignedToAdd: DeviceSigned?
-				let sessionTranscript = sessionEncryption?.transcript ?? sessionTranscript
-				if let eReaderKey, let sessionTranscript {
-					let authKeys = CoseKeyExchange(publicKey: eReaderKey, privateKey: devicePrivateKey)
-					let mdocAuth = MdocAuthentication(transcript: sessionTranscript, authKeys: authKeys)
-					let devAuth = try await mdocAuth.getDeviceAuthForTransfer(docType: doc.issuerAuth.mso.docType, dauthMethod: deviceAuthMethod, unlockData: unlockData[selectedDocId])
-					devSignedToAdd = DeviceSigned(deviceAuth: devAuth)
-				}
+				let authKeys = CoseKeyExchange(publicKey: eReaderKey, privateKey: devicePrivateKey)
+				let mdocAuth = MdocAuthentication(transcript: sessionTranscript, authKeys: authKeys)
+				let devAuth = try mdocAuth.getDeviceAuthForTransfer(docType: doc.issuerAuth.mso.docType)
+				let devSignedToAdd = DeviceSigned(deviceAuth: devAuth)
 				let docToAdd = Document(docType: doc.issuerAuth.mso.docType, issuerSigned: issToAdd, deviceSigned: devSignedToAdd, errors: errors)
 				documentsToAdd.append(docToAdd)
 			} else {

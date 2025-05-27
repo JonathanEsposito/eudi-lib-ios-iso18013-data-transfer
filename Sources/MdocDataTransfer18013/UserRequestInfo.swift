@@ -16,7 +16,7 @@ limitations under the License.
 import Foundation
 import MdocDataModel18013
 
-public struct UserRequestInfo: Sendable {
+public struct UserRequestInfo: Sendable, Equatable {
 	public init(docDataFormats: [String: DocDataFormat], itemsRequested: RequestItems, readerAuthValidated: Bool? = nil, readerCertificateIssuer: String? = nil, readerCertificateValidationMessage: String? = nil, readerLegalName: String? = nil) {
 		self.docDataFormats = docDataFormats
 		self.itemsRequested = itemsRequested

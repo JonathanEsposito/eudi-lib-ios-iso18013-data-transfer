@@ -31,7 +31,6 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 	public var deviceRequest: DeviceRequest?
 	public var sessionEncryption: SessionEncryption?
 	public var iaca: [SecCertificate]
-	public var dauthMethod: DeviceAuthMethod
 	public var readerName: String?
 	public var qrCodePayload: String?
 	public weak var delegate: (any MdocOfflineDelegate)?
@@ -51,9 +50,8 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 	
 	var isInErrorState: Bool { status == .error }
 	
-	public init(trustedCertificates: [SecCertificate], deviceAuthMethod: DeviceAuthMethod) {
+	public init(trustedCertificates: [SecCertificate]) {
 		self.iaca = trustedCertificates
-		self.dauthMethod = deviceAuthMethod
 		status = .initialized
 		
 		super.init()
@@ -78,15 +76,14 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 	// Create a new device engagement object and start the device engagement process.
 	///
 	/// ``qrCodePayload`` is set to QR code data corresponding to the device engagement.
-	public func performDeviceEngagement(secureArea: any SecureArea, crv: CoseEcCurve, rfus: [String]? = nil) async throws {
+	public func performDeviceEngagement(crv: CoseEcCurve, rfus: [String]? = nil) throws {
 		guard !isPreview && !isInErrorState else {
 			logger.info("Current status is \(status)")
 			return
 		}
 		// Check that the class is in the right state to start the device engagement process. It will fail if the class is in any other state.
 		guard status == .initialized || status == .disconnected || status == .responseSent else { error = MdocHelpers.makeError(code: .unexpected_error, str: error?.localizedDescription ?? "Not initialized!"); return }
-		deviceEngagement = DeviceEngagement(isBleServer: true, rfus: rfus)
-		try await deviceEngagement!.makePrivateKey(crv: crv, secureArea: secureArea)
+		deviceEngagement = try DeviceEngagement(isBleServer: true, crv: crv, rfus: rfus)
 		sessionEncryption = nil
 #if os(iOS)
 		qrCodePayload = deviceEngagement!.getQrCodePayload()
@@ -139,26 +136,26 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 		qrCodePayload = nil
 		advertising = false
 		subscribeCount = 0
-		if let pk = deviceEngagement?.privateKey { Task { @MainActor in try? await pk.secureArea.deleteKey(id: pk.privateKeyId); deviceEngagement?.privateKey = nil } }
+		if let pk = deviceEngagement?.privateKey { deviceEngagement?.privateKey = nil }
 		if status == .error && initSuccess { status = .initializing }
 	}
 	
-	func handleStatusChange(_ newValue: TransferStatus) async {
+	func handleStatusChange(_ newValue: TransferStatus) {
 		guard !isPreview && !isInErrorState else { return }
 		logger.log(level: .info, "Transfer status will change to \(newValue)")
 		delegate?.didChangeStatus(newValue)
 		if newValue == .requestReceived {
 			peripheralManager.stopAdvertising()
 			do {
-				let request = try await MdocHelpers.decodeRequest(deviceEngagement: deviceEngagement,
-																  iaca: iaca,
-																  requestData: readBuffer,
-																  handOver: BleTransferMode.qrHandover)
+				let request = try MdocHelpers.decodeRequest(deviceEngagement: deviceEngagement,
+															iaca: iaca,
+															requestData: readBuffer,
+															handOver: BleTransferMode.qrHandover)
 				self.deviceRequest = request.deviceRequest
 				sessionEncryption = request.sessionEncryption
 				delegate?.didReceiveRequest(request.userRequestInfo, handleSelected: userSelected)
 			} catch {
-				logger.error("Error sending data: \(error)")
+				logger.error("Error parcing request: \(error)")
 				var sessionData: SessionData {
 					do {
 						throw error
@@ -182,7 +179,7 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 		}
 	}
 	
-	public func userSelected(request: UserRequestInfo, selectedItems: RequestItems, attestations: [String: (IssuerSigned, CoseKeyPrivate)]) async {
+	public func userSelected(request: UserRequestInfo, selectedItems: RequestItems, attestations: [String: (IssuerSigned, WalletPrivateKey)]) {
 		status = .userSelected
 		
 		defer {
@@ -192,15 +189,13 @@ public class MdocGattServer: NSObject, @unchecked Sendable, ObservableObject {
 		}
 		
 		do {
-			let deviceResponseToSend = try await MdocHelpers.getDeviceResponseToSend(userRequestInfo: request,
-																					 attestations: attestations,
-																					 selectedItems: selectedItems,
-																					 sessionEncryption: sessionEncryption,
-																					 eReaderKey: sessionEncryption!.sessionKeys.publicKey,
-																					 deviceAuthMethod: dauthMethod,
-																					 unlockData: [:])
+			let deviceResponseToSend = try MdocHelpers.getDeviceResponseToSend(userRequestInfo: request,
+																			   attestations: attestations,
+																			   selectedItems: selectedItems,
+																			   eReaderKey: sessionEncryption!.publicKey,
+																			   sessionTranscript: sessionEncryption!.transcript)
 			
-			sendBuffer = await MdocHelpers.getSessionDataToSend(sessionEncryption: sessionEncryption, docToSend: deviceResponseToSend)
+			sendBuffer = MdocHelpers.getSessionDataToSend(sessionEncryption: sessionEncryption, docToSend: deviceResponseToSend)
 		} catch {
 			logger.error("Error sending data: \(error)")
 			self.error = error
